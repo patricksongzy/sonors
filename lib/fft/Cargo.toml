@@ -1,0 +1,17 @@
+[package]
+name = "fft"
+version = "0.1.0"
+authors = ["Patrick Song <32438365+patricksongzy@users.noreply.github.com>"]
+edition = "2018"
+
+[lib]
+name = "fft"
+path = "lib.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+complex = { path = "../complex" }
+
+[dev-dependencies]
+rand = "0.7"

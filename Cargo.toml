@@ -1,0 +1,23 @@
+[package]
+name = "sonors"
+version = "0.1.0"
+authors = ["Patrick Song <32438365+patricksongzy@users.noreply.github.com>"]
+edition = "2018"
+
+[workspace]
+members = [
+    "lib/fft",
+    "lib/complex",
+]
+
+[[bin]]
+name = "sonors"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+rand = "0.7"
+fft = { path = "lib/fft" }
+complex = { path = "lib/complex" }
