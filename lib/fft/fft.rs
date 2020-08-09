@@ -1,6 +1,4 @@
-// Algorithms based off 'Real-Valued Fast Fourier Transform Algorithms' by Sorensen et al.
-// Tests based off [](https://www.dsprelated.com/showthread/comp.dsp/71595-1.php), and
-// 'Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck' by Ergun.
+// Algorithms based off 'Real-Valued Fast Fourier Transform Algorithms' by Sorensen et al.  Tests based off [](https://www.dsprelated.com/showthread/comp.dsp/71595-1.php), and 'Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck' by Ergun.
 
 use complex::complex::*;
 
@@ -13,11 +11,11 @@ pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
 
     // split into tuple of even, and odd indexed vectors
     let partitioned: (Vec<Complex>, Vec<Complex>) = partition_with_index(&input_signal, |&(i, _)| i % 2 == 0);
-                                                                                                              
-    // perform fft on even indices                                                                            
-    let mut output_signal: Vec<Complex> = fft(partitioned.0);                                                 
-    // perform fft on odd indices                                                                             
-    output_signal.extend(fft(partitioned.1));                                                                 
+
+    // perform fft on even indices
+    let mut output_signal: Vec<Complex> = fft(partitioned.0);
+    // perform fft on odd indices
+    output_signal.extend(fft(partitioned.1));
 
     // precompute coefficient
     let coefficient: Float = 2.0 * std::f64::consts::PI / signal_length as Float;
@@ -37,48 +35,52 @@ pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
     output_signal
 }
 
-pub fn iterative_fft(input_signal: Vec<Complex>) -> Vec<Complex> {
-    let signal_length: usize = input_signal.len();
-    let mut output_signal = bit_reverse_copy(input_signal);
+pub fn iterative_fft(mut signal: Vec<Complex>) {
+    let signal_length: usize = signal.len();
+    bit_reverse_copy(&mut signal);
 
-    for s in 1..=log2(signal_length) {
-        let m = (2 as usize).pow(s as u32);
+    let mut m_halves = 1;
+    for _ in 1..=log2(signal_length) {
+        let m = 2 * m_halves;
+        m_halves = m;
+
         let angle: Float = 2.0 * std::f64::consts::PI / m as Float;
         let wm = Complex::new(angle.cos(), -angle.sin());
-                                                                         
-        for k in (0..signal_length).step_by(m) {                         
-            let mut w = Complex::new(1.0, 0.0);                          
-            for j in 0..m / 2 {                                          
-                let t = w * output_signal[k + j + m / 2];                
-                let u = output_signal[k + j];
 
-                output_signal[k + j] = u + t;
-                output_signal[k + j + m / 2] = u - t;
+        for k in (0..signal_length).step_by(m) { 
+            let mut w = Complex::new(1.0, 0.0);
+            for j in 0..m_halves {
+                let t = w * signal[k + j + m_halves];
+                let u = signal[k + j];
 
-                w = w * wm;
+                signal[k + j] = u + t;
+                signal[k + j + m_halves] = u - t;
+
+                w *= wm;
             }
         }
     }
-
-    output_signal
 }
 
 fn log2(input: usize) -> usize {
     std::mem::size_of::<usize>() * 8 - input.leading_zeros() as usize - 1
 }
 
-fn bit_reverse_copy<T>(input: Vec<T>) -> Vec<T>
+fn bit_reverse_copy<T>(input: &mut Vec<T>)
 where
-    T: Clone + Default,
+    T: Copy,
 {
     let input_length = input.len();
     let leading_zeros = (input_length - 1).leading_zeros();
-    let mut result: Vec<T> = vec![Default::default(); input_length];
     for k in 0..input_length {
-        result[k.reverse_bits() >> leading_zeros] = input[k].clone();
+        let j = k.reverse_bits() >> leading_zeros;
+        if k < j {
+            let t = input[k];
+            input[k] = input[j];
+            input[j] = t;
+        }
+        // result[k.reverse_bits() >> leading_zeros] = input[k].clone();
     }
-
-    result
 }
 
 pub fn combined_rfft(left: Vec<Float>, right: Vec<Float>) -> (Vec<Complex>, Vec<Complex>) {
@@ -103,8 +105,8 @@ pub fn combined_rfft(left: Vec<Float>, right: Vec<Float>) -> (Vec<Complex>, Vec<
     (output_left, output_right)
 }
 
-pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {                                                       
-    let signal_length: usize = input_signal.len();                                                        
+pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
+    let signal_length: usize = input_signal.len();
 
     let (evens, odds): (Vec<Float>, Vec<Float>) = partition_with_index(&input_signal, |&(i, _)| i % 2 == 0);
 
@@ -132,17 +134,77 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     output_signal
 }
 
+/// Computes the radix-2 real-valued Fast fourier Transform. The output sequence is in the format
+/// `{Re[0], Re[1], ..., Re[N / 2], Im[N / 2 - 1], Im[N / 2 - 2], ..., Im[1]}`, where `Im[0]`, and
+/// `Im[N / 2]` are both `0`.
+/// This function is based off the provided radix-2 real-valued FFT butterfly diagram by Sorensen
+/// et al.
+pub fn rfft_r2(signal: &mut Vec<Float>) {
+    let signal_length: usize = signal.len();
+    bit_reverse_copy(signal);
+
+    // length two butterflies where twiddle is `1`
+    for i in (0..signal_length).step_by(2) {
+        let t = signal[i];
+        signal[i] = t + signal[i + 1];
+        signal[i + 1] = t - signal[i + 1];
+    }
+
+    let mut m_halves = 1;
+    for _ in 2..=log2(signal_length) {
+        let m_quarters = m_halves;
+        m_halves = 2 * m_quarters;
+        let m = 2 * m_halves;
+
+        let angle: Float = 2.0 * std::f64::consts::PI / m as Float;
+        let wm = Complex::new(angle.cos(), -angle.sin());
+
+        // split into `N / m` groups
+        for k in (0..signal_length).step_by(m) {
+            // initialising `w` as `wm` is needed since some butterflies are skipped, and doing so reduces necessary trigonometric calculations
+            let mut w = wm;
+
+            let t = signal[k];
+            // twiddle is `1` for the first element of the group
+            signal[k] = t + signal[k + m_halves];
+            signal[k + m_halves] = t - signal[k + m_halves];
+
+            // the `N / 4`, and `3 * N / 4` (complex conjugates) butterflies only require a sign change, since their twiddle is `-i`
+            signal[k + 3 * m_quarters] = -signal[k + 3 * m_quarters];
+
+            // compute output from `[0, N / 4]`, and `[N / 2, 3 * N / 4]`
+            for j in 1..m_quarters {
+                // calculate and store the real values in [0, N / 4], and [n / 2, 3 * N / 4]
+                let i_re = (k + j, k + j + m_halves);
+                // store the imaginary values at the `(N - i) mod N`th position, redundant due to symmetry
+                let i_im = (m + k - j, m_halves + k - j);
+
+                let t = w * Complex::new(signal[i_re.1], signal[i_im.0]);
+
+                // must use value at `i_im.1` before it is overwritten
+                signal[i_im.0] = signal[i_im.1] + t.im;
+                signal[i_re.1] = -signal[i_im.1] + t.im;
+
+                signal[i_im.1] = signal[i_re.0] - t.re;
+                signal[i_re.0] = signal[i_re.0] + t.re;
+
+                w *= wm;
+            }
+        }
+    }
+}
+
 /// Performs a partition with a predicate which can return `true`, or `false` based on index, and
 /// value.
 /// Based off of the Rust partition code, which is 'released under both the MIT licence, and the
 /// Apache Licence (Version 2.0), with portions covered by various BSD-like licences.'
 /// For more information, [](https://github.com/rust-lang/rust).
 fn partition_with_index<D, B, F>(data: D, f: F) -> (B, B)
-where                                                                                            
-    D: IntoIterator + Sized,                                                                     
-    B: Default + Extend<D::Item>,                                                                
-    F: FnMut(&(usize, D::Item)) -> bool,                                                         
-{                                                                                                
+where
+    D: IntoIterator + Sized,
+    B: Default + Extend<D::Item>,
+    F: FnMut(&(usize, D::Item)) -> bool,
+{
     #[inline]
     fn extend<'a, T, B: Extend<T>>(
         mut f: impl FnMut(&(usize, T)) -> bool + 'a,
@@ -221,6 +283,13 @@ mod tests {
         let (left, right) = combined_rfft(SIG_ALTERNATING.to_vec(), SIG_ALTERNATING.to_vec());
         assert_eq!(left, ALTERNATING_FFT);
         assert_eq!(right, ALTERNATING_FFT);
+    }
+
+    #[test]
+    fn test_rfft_r2() {
+        let mut signal = SIG_ALTERNATING.to_vec();
+        rfft_r2(&mut signal);
+        println!("{:?}", signal);
     }
 
     #[test]

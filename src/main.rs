@@ -2,10 +2,11 @@ use fft::fft::*;
 use complex::complex::*;
 
 fn main() {
-    let input_signal = create_signal(0.5, 128);
-    let output_signal = rfft(input_signal);
+    let mut signal = create_signal(0.5, 128);
+    rfft_r2(&mut signal);
 
-    println!("{:?}", output_signal);
+    println!("{:?}", &signal[..64]);
+    println!("{:?}", &signal[65..]);
 }
 
 fn create_signal(frequency: Float, signal_length: usize) -> Vec<Float> {
