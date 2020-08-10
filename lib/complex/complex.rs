@@ -1,13 +1,11 @@
 use std::ops;
 
+use approx::*;
+
 #[cfg(feature = "f32")]
 pub type Float = f32;
-#[cfg(feature = "f32")]
-pub use std::f32 as floats;
 #[cfg(not(feature = "f32"))]
 pub type Float = f64;
-#[cfg(not(feature = "f32"))]
-pub use std::f64 as floats;
 
 #[derive(Copy, Clone, Default, PartialEq)]
 pub struct Complex {
@@ -24,6 +22,40 @@ impl Complex {
     #[inline]
     pub fn conj(&self) -> Self {
         Self::new(self.re.clone(), -self.im.clone())
+    }
+}
+
+impl PartialEq<Complex> for Float {
+    fn eq(&self, other: &Complex) -> bool {
+        *self == other.re && other.im == 0.0
+    }
+}
+
+impl PartialEq<Float> for Complex {
+    fn eq(&self, other: &Float) -> bool {
+        self.re == *other && self.im == 0.0
+    }
+}
+
+impl AbsDiffEq for Complex {
+    type Epsilon = <Float as AbsDiffEq>::Epsilon;
+
+    fn default_epsilon() -> <Float as AbsDiffEq>::Epsilon {
+        Float::default_epsilon()
+    }
+
+    fn abs_diff_eq(&self, other: &Self, epsilon: <Float as AbsDiffEq>::Epsilon) -> bool {
+        Float::abs_diff_eq(&self.re, &other.re, epsilon) && Float::abs_diff_eq(&self.im, &other.im, epsilon)
+    }
+}
+
+impl RelativeEq for Complex {
+    fn default_max_relative() -> <Float as AbsDiffEq>::Epsilon {
+        Float::default_max_relative()
+    }
+
+    fn relative_eq(&self, other: &Self, epsilon: <Float as AbsDiffEq>::Epsilon, max_relative: <Float as AbsDiffEq>::Epsilon) -> bool {
+        Float::relative_eq(&self.re, &other.re, epsilon, max_relative) && Float::relative_eq(&self.im, &other.im, epsilon, max_relative)
     }
 }
 

@@ -1,4 +1,6 @@
-// Algorithms based off 'Real-Valued Fast Fourier Transform Algorithms' by Sorensen et al.  Tests based off [](https://www.dsprelated.com/showthread/comp.dsp/71595-1.php), and 'Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck' by Ergun.
+// Algorithms based off 'Real-Valued Fast Fourier Transform Algorithms' by Sorensen et al.
+// Tests based off [](https://www.dsprelated.com/showthread/comp.dsp/71595-1.php),
+// and 'Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck' by Ergun.
 
 use complex::complex::*;
 
@@ -169,14 +171,14 @@ pub fn rfft_r2(signal: &mut Vec<Float>) {
             signal[k] = t + signal[k + m_halves];
             signal[k + m_halves] = t - signal[k + m_halves];
 
-            // the `N / 4`, and `3 * N / 4` (complex conjugates) butterflies only require a sign change, since their twiddle is `-i`
+            // the `m / 4`, and `3 * m / 4` (complex conjugates) butterflies only require a sign change, since their twiddle is `-i`
             signal[k + 3 * m_quarters] = -signal[k + 3 * m_quarters];
 
-            // compute output from `[0, N / 4]`, and `[N / 2, 3 * N / 4]`
+            // compute output from `[0, m / 4]`, and `[m / 2, 3 * m / 4]`
             for j in 1..m_quarters {
-                // calculate and store the real values in [0, N / 4], and [n / 2, 3 * N / 4]
+                // calculate and store the real values in [0, m / 4], and [m / 2, 3 * m / 4]
                 let i_re = (k + j, k + j + m_halves);
-                // store the imaginary values at the `(N - i) mod N`th position, redundant due to symmetry
+                // store the imaginary values at the `(m - i) mod m`th position, redundant due to symmetry
                 let i_im = (m + k - j, m_halves + k - j);
 
                 let t = w * Complex::new(signal[i_re.1], signal[i_im.0]);
@@ -252,14 +254,6 @@ mod tests {
         alternating_fft
     };
 
-    macro_rules! assert_delta {
-        ($x:expr, $y:expr, $d:expr) => {
-            if ($x - $y).abs() > $d {
-                panic!();
-            }
-        }
-    }
-
     #[test]
     fn test_rfft_zeros() {
         let output_signal = rfft(SIG_ZEROS.to_vec());
@@ -289,7 +283,7 @@ mod tests {
     fn test_rfft_r2() {
         let mut signal = SIG_ALTERNATING.to_vec();
         rfft_r2(&mut signal);
-        println!("{:?}", signal);
+        assert_eq!(signal[..=signal.len() / 2], ALTERNATING_FFT[0..=signal.len() / 2]);
     }
 
     #[test]
@@ -317,9 +311,8 @@ mod tests {
             }
         }
 
-        for (output, equivalent) in output_signal.iter().zip(output_equiv) {
-            assert_delta!(output.re, equivalent.re, 1e-8);
-            assert_delta!(output.im, equivalent.im, 1e-8);
+        for (output, equivalent) in output_signal.iter().zip(&output_equiv) {
+            assert_relative_eq!(output, equivalent, epsilon=1e-8);
         }
     }
 }

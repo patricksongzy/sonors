@@ -12,6 +12,7 @@ path = "lib.rs"
 
 [dependencies]
 complex = { path = "../complex" }
+approx = "0.3"
 
 [dev-dependencies]
 rand = "0.7"
