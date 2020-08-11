@@ -4,6 +4,8 @@
 
 use complex::complex::*;
 
+/// Computes a radix-2 Fast Fourier Transform. The output sequence is a `Vec` of the complex
+/// results. This function writes to a new `Vec` instead of overwriting the original.
 pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
     let signal_length: usize = input_signal.len();
 
@@ -37,14 +39,15 @@ pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
     output_signal
 }
 
-pub fn iterative_fft(mut signal: Vec<Complex>) {
+/// Computes a radix-2 Fast Fourier Transform. The output sequence is a `Vec` of the complex
+/// results. This function writes overwrites the original `Vec`, instead of creating a new one.
+pub fn iterative_fft(signal: &mut Vec<Complex>) {
     let signal_length: usize = signal.len();
-    bit_reverse_copy(&mut signal);
+    bit_reverse_copy(signal);
 
     let mut m_halves = 1;
     for _ in 1..=log2(signal_length) {
         let m = 2 * m_halves;
-        m_halves = m;
 
         let angle: Float = 2.0 * std::f64::consts::PI / m as Float;
         let wm = Complex::new(angle.cos(), -angle.sin());
@@ -61,13 +64,17 @@ pub fn iterative_fft(mut signal: Vec<Complex>) {
                 w *= wm;
             }
         }
+
+        m_halves = m;
     }
 }
 
+/// Calculates the logarithm, base 2 of a `usize`. This is made easy due to the base of 2.
 fn log2(input: usize) -> usize {
     std::mem::size_of::<usize>() * 8 - input.leading_zeros() as usize - 1
 }
 
+/// Overwrites an input `Vec` in a bit-reversed order.
 fn bit_reverse_copy<T>(input: &mut Vec<T>)
 where
     T: Copy,
@@ -81,13 +88,14 @@ where
             input[k] = input[j];
             input[j] = t;
         }
-        // result[k.reverse_bits() >> leading_zeros] = input[k].clone();
     }
 }
 
+/// Calculates two real-valued Fast Fourier Transforms similtaneously.
 pub fn combined_rfft(left: Vec<Float>, right: Vec<Float>) -> (Vec<Complex>, Vec<Complex>) {
     let signal_length: usize = left.len();
 
+    // store the left, and right signals in a `Vec<Complex>` of the same length
     let mut combined_signal: Vec<Complex> = vec![Complex::new(0.0, 0.0); signal_length];
     for ((combined, left), right) in combined_signal.iter_mut().zip(&left).zip(&right) {
         *combined = Complex::new(*left, *right);
@@ -101,12 +109,15 @@ pub fn combined_rfft(left: Vec<Float>, right: Vec<Float>) -> (Vec<Complex>, Vec<
     output_right[0] = Complex::new(combined_output[0].im, 0.0);
     for k in 1..signal_length {
         output_left[k] = Complex::new(0.5, 0.0) * (combined_output[k] + combined_output[signal_length - k].conj());
+        // the right signal was stored as the complex values
         output_right[k] = Complex::new(0.0, 0.5) * (combined_output[signal_length - k].conj() - combined_output[k]);
     }
     
     (output_left, output_right)
 }
 
+/// Computes a real-valued Fast Fourier Transform through a `combined_rfft` of the even, and odd
+/// values.
 pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     let signal_length: usize = input_signal.len();
 
@@ -141,7 +152,7 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
 /// `Im[N / 2]` are both `0`.
 /// This function is based off the provided radix-2 real-valued FFT butterfly diagram by Sorensen
 /// et al.
-pub fn rfft_r2(signal: &mut Vec<Float>) {
+pub fn iterative_rfft(signal: &mut Vec<Float>) {
     let signal_length: usize = signal.len();
     bit_reverse_copy(signal);
 
@@ -234,7 +245,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
+    use std::ops::*;
     use rand::Rng;
+    use rand::distributions;
 
     // test vectors
     const SIG_ZEROS: [Float; 8] = [0.0; 8];
@@ -280,39 +294,73 @@ mod tests {
     }
 
     #[test]
-    fn test_rfft_r2() {
+    fn test_iterative_rfft() {
         let mut signal = SIG_ALTERNATING.to_vec();
-        rfft_r2(&mut signal);
-        assert_eq!(signal[..=signal.len() / 2], ALTERNATING_FFT[0..=signal.len() / 2]);
+        iterative_rfft(&mut signal);
+        assert_eq!(signal[..=signal.len() / 2], ALTERNATING_FFT[0..=ALTERNATING_FFT.len() / 2]);
+        assert_eq!(signal[signal.len() / 2 + 1..], [0.0; ALTERNATING_FFT.len() / 2 - 1]);
+    }
+
+    #[test]
+    fn test_fft_linearity() {
+        test_linearity(&fft, 1e-8);
+    }
+
+    #[test]
+    fn test_iterative_fft_linearity() {
+        test_linearity(&|signal| {
+            let mut output = signal.clone();
+            iterative_fft(&mut output);
+            output
+        }, 1e-8);
     }
 
     #[test]
     fn test_rfft_linearity() {
+        test_linearity(&rfft, 1e-8);
+    }
+
+    #[test]
+    fn test_iterative_rfft_linearity() {
+        test_linearity(&|signal| {
+            let mut output = signal.clone();
+            iterative_rfft(&mut output);
+            output
+        }, 1e-8);
+    }
+
+    fn test_linearity<T, B>(f: &dyn Fn(Vec<T>) -> Vec<B>, epsilon: B::Epsilon)
+    where
+        T: Add + Mul<Output=T> + Mul<B, Output=B> + AddAssign + MulAssign + Copy + Clone + Debug,
+        B: Add + Mul<Output=B> + Mul<T, Output=B> + AddAssign + MulAssign + MulAssign<T> + approx::RelativeEq + Copy + Debug,
+        B::Epsilon: Copy,
+        distributions::Standard: distributions::Distribution<T>,
+    {
         let mut rng = rand::thread_rng();
-        let coefficient_left: Float = rng.gen::<Float>();
-        let coefficient_right: Float = rng.gen::<Float>();
-        let lefts: Vec<Float> = (0..8).map(|_| rng.gen::<Float>()).collect();
-        let rights: Vec<Float> = (0..8).map(|_| rng.gen::<Float>()).collect();
-        let mut input_signal: Vec<Float> = lefts.clone();
+        let coefficient_left: T = rng.gen::<T>();
+        let coefficient_right: T = rng.gen::<T>();
+        let lefts: Vec<T> = (0..8).map(|_| rng.gen::<T>()).collect();
+        let rights: Vec<T> = (0..8).map(|_| rng.gen::<T>()).collect();
+        let mut input_signal: Vec<T> = lefts.clone();
         {
             for (input, right) in input_signal.iter_mut().zip(&rights) {
                 *input *= coefficient_left;
-                *input += coefficient_right * right;
+                *input += coefficient_right * *right;
             }
         }
 
-        let output_signal = rfft(input_signal);
-        let mut output_equiv = rfft(lefts);
-        let outputs_right = rfft(rights);
+        let output_signal = f(input_signal);
+        let mut output_equiv = f(lefts);
+        let outputs_right = f(rights);
         {
             for (equivalent, output_right) in output_equiv.iter_mut().zip(&outputs_right) {
-                *equivalent *= Complex::new(coefficient_left, 0.0);
-                *equivalent += Complex::new(coefficient_right, 0.0) * *output_right;
+                *equivalent *= coefficient_left;
+                *equivalent += coefficient_right * *output_right;
             }
         }
 
         for (output, equivalent) in output_signal.iter().zip(&output_equiv) {
-            assert_relative_eq!(output, equivalent, epsilon=1e-8);
+            assert_relative_eq!(output, equivalent, epsilon=epsilon);
         }
     }
 }

@@ -1,4 +1,6 @@
 use std::ops;
+use rand::Rng;
+use rand::distributions::{Standard, Distribution};
 
 use approx::*;
 
@@ -22,6 +24,13 @@ impl Complex {
     #[inline]
     pub fn conj(&self) -> Self {
         Self::new(self.re.clone(), -self.im.clone())
+    }
+}
+
+impl Distribution<Complex> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex {
+        let (re, im) = rng.gen();
+        Complex::new(re, im)
     }
 }
 
@@ -69,6 +78,24 @@ impl ops::Mul<Complex> for Complex {
     }
 }
 
+impl ops::Mul<Float> for Complex {
+    type Output = Self;
+
+    #[inline]
+    fn mul(self, other: Float) -> Self {
+        Self::new(self.re * other, self.im * other)
+    }
+}
+
+impl ops::Mul<Complex> for Float {
+    type Output = Complex;
+
+    #[inline]
+    fn mul(self, other: Complex) -> Complex {
+        Complex::new(self * other.re, self * other.im)
+    }
+}
+
 impl ops::MulAssign for Complex {
     #[inline]
     fn mul_assign(&mut self, other: Self) {
@@ -78,6 +105,14 @@ impl ops::MulAssign for Complex {
 
         self.im *= other.re;
         self.im += a * other.im;
+    }
+}
+
+impl ops::MulAssign<Float> for Complex {
+    #[inline]
+    fn mul_assign(&mut self, other: Float) {
+        self.re *= other;
+        self.im *= other;
     }
 }
 

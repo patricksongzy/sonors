@@ -12,3 +12,4 @@ path = "lib.rs"
 
 [dependencies]
 approx = "0.3"
+rand = "0.7"
