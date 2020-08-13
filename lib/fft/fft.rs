@@ -22,7 +22,7 @@ pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
     output_signal.extend(fft(partitioned.1));
 
     // precompute coefficient
-    let coefficient: Float = 2.0 * std::f64::consts::PI / signal_length as Float;
+    let coefficient: Float = (2.0 * std::f64::consts::PI / signal_length as f64) as Float;
     for k in 0..signal_length / 2 {
         let t = output_signal[k];
         let angle = coefficient * k as Float;
@@ -129,7 +129,7 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
 
     let t = output_signal[0] - output_signal[signal_length / 2];
 
-    let coefficient: Float = 2.0 * std::f64::consts::PI / signal_length as Float;
+    let coefficient: Float = (2.0 * std::f64::consts::PI / signal_length as f64) as Float;
     for k in 0..signal_length / 2 {
         let angle = coefficient * k as Float;
         let rotating_vector = Complex::new(angle.cos(), -angle.sin());
@@ -147,12 +147,39 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     output_signal
 }
 
+pub fn create_rotating_vectors(signal_length: usize) -> Vec<Complex> {
+    let coefficient: Float = (2.0 * std::f64::consts::PI) as Float;
+    let mut m = 2;
+
+    let mut rotating_vectors: Vec<Complex> = vec![Complex::new(0.0, 0.0); log2(signal_length) - 1];
+
+    for s in 2..=log2(signal_length) {
+        m *= 2;
+
+        let angle = coefficient / m as Float;
+        rotating_vectors[s - 2] = Complex::new(angle.cos(), -angle.sin());
+    }
+
+    rotating_vectors
+}
+
+pub fn iterative_rfft_once(signal: &mut Vec<Float>) {
+    iterative_rfft(signal, &create_rotating_vectors(signal.len()));
+}
+
+pub fn iterative_hann(signal: &mut Vec<Float>) {
+    let coefficient = (2.0 * std::f64::consts::PI / (signal.len() - 1) as f64) as Float;
+    for i in 0..signal.len() {
+        signal[i] = 0.5 - 0.5 * (coefficient * i as Float).cos();
+    }
+}
+
 /// Computes the radix-2 real-valued Fast fourier Transform. The output sequence is in the format
 /// `{Re[0], Re[1], ..., Re[N / 2], Im[N / 2 - 1], Im[N / 2 - 2], ..., Im[1]}`, where `Im[0]`, and
 /// `Im[N / 2]` are both `0`.
 /// This function is based off the provided radix-2 real-valued FFT butterfly diagram by Sorensen
 /// et al.
-pub fn iterative_rfft(signal: &mut Vec<Float>) {
+pub fn iterative_rfft(signal: &mut Vec<Float>, rotating_vectors: &Vec<Complex>) {
     let signal_length: usize = signal.len();
     bit_reverse_copy(signal);
 
@@ -164,13 +191,12 @@ pub fn iterative_rfft(signal: &mut Vec<Float>) {
     }
 
     let mut m_halves = 1;
-    for _ in 2..=log2(signal_length) {
+    for s in 2..=log2(signal_length) {
         let m_quarters = m_halves;
         m_halves = 2 * m_quarters;
         let m = 2 * m_halves;
-
-        let angle: Float = 2.0 * std::f64::consts::PI / m as Float;
-        let wm = Complex::new(angle.cos(), -angle.sin());
+        
+        let wm = rotating_vectors[s - 2];
 
         // split into `N / m` groups
         for k in (0..signal_length).step_by(m) {
@@ -268,6 +294,43 @@ mod tests {
         alternating_fft
     };
 
+    fn create_signal(frequency: Float, signal_length: usize) -> Vec<Float> {
+        let coefficient: Float = (2.0 * std::f64::consts::PI) as Float * frequency;
+        (0..signal_length).map(|x| (coefficient * x as Float).sin()).collect()
+    }
+
+    fn wrap_real(signal: &Vec<Float>) -> Vec<Complex> {
+        signal.iter().map(|x| Complex::new(*x, 0.0)).collect()
+    }
+
+    #[test]
+    fn test_rfft_baseline() {
+        let sig_sine = create_signal(1.5, 128);
+        let sine_fft = fft(wrap_real(&sig_sine));
+
+        for (output, target) in rfft(sig_sine).iter().zip(&sine_fft) {
+            assert_relative_eq!(output, target);
+        }
+    }
+
+    #[test]
+    fn test_iterative_rfft_baseline() {
+        let sig_sine = create_signal(1.5, 128);
+        let sine_fft = fft(wrap_real(&sig_sine));
+
+        let mut signal = sig_sine.clone();
+        let signal_length = signal.len();
+        iterative_rfft_once(&mut signal);
+
+        for (output, target) in (&signal[..=signal_length / 2]).iter().zip(&sine_fft[..=signal_length / 2]) {
+            assert_relative_eq!(output, &target.re);
+        }
+
+        for (target, output) in (&sine_fft[1..signal_length / 2]).iter().rev().zip(&signal[signal_length / 2 + 1..]) {
+            assert_relative_eq!(output, &target.im);
+        }
+    }
+
     #[test]
     fn test_rfft_zeros() {
         let output_signal = rfft(SIG_ZEROS.to_vec());
@@ -296,7 +359,7 @@ mod tests {
     #[test]
     fn test_iterative_rfft() {
         let mut signal = SIG_ALTERNATING.to_vec();
-        iterative_rfft(&mut signal);
+        iterative_rfft_once(&mut signal);
         assert_eq!(signal[..=signal.len() / 2], ALTERNATING_FFT[0..=ALTERNATING_FFT.len() / 2]);
         assert_eq!(signal[signal.len() / 2 + 1..], [0.0; ALTERNATING_FFT.len() / 2 - 1]);
     }
@@ -324,7 +387,7 @@ mod tests {
     fn test_iterative_rfft_linearity() {
         test_linearity(&|signal| {
             let mut output = signal.clone();
-            iterative_rfft(&mut output);
+            iterative_rfft_once(&mut output);
             output
         }, 1e-8);
     }
