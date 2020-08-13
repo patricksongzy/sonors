@@ -4,6 +4,11 @@
 
 use complex::complex::*;
 
+pub fn get_frequencies(signal_length: usize, sample_period: Float) -> Vec<Float> {
+    let scale = 1.0 as Float / (sample_period * signal_length as Float);
+    (0..(signal_length as i32 - 1) / 2 + 1).chain(-((signal_length / 2) as i32)..0).map(|value| value as Float * scale).collect()
+}
+
 /// Computes a radix-2 Fast Fourier Transform. The output sequence is a `Vec` of the complex
 /// results. This function writes to a new `Vec` instead of overwriting the original.
 pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
@@ -167,11 +172,9 @@ pub fn iterative_rfft_once(signal: &mut Vec<Float>) {
     iterative_rfft(signal, &create_rotating_vectors(signal.len()));
 }
 
-pub fn iterative_hann(signal: &mut Vec<Float>) {
-    let coefficient = (2.0 * std::f64::consts::PI / (signal.len() - 1) as f64) as Float;
-    for i in 0..signal.len() {
-        signal[i] = 0.5 - 0.5 * (coefficient * i as Float).cos();
-    }
+pub fn get_hann(signal_length: usize) -> Vec<Float> {
+    let coefficient = (2.0 * std::f64::consts::PI / (signal_length - 1) as f64) as Float;
+    (0..signal_length).map(|i| 0.5 - 0.5 * (coefficient * i as Float).cos()).collect::<Vec<Float>>()
 }
 
 /// Computes the radix-2 real-valued Fast fourier Transform. The output sequence is in the format
