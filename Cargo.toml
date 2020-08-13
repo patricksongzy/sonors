@@ -17,7 +17,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
 rand = "0.7"
+portaudio = "0.7"
 fft = { path = "lib/fft" }
 complex = { path = "lib/complex" }
