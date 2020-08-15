@@ -136,14 +136,15 @@ impl Spectrogram {
                 ctx.put_image_data(&image_data, 0.0, 0.0).expect("Failed to put image data to canvas.");
                 ctx.clear_rect((width - 1) as f64, 0.0, 1.0, height as f64);
 
-                ctx.begin_path();
+                let magnitudes: Vec<(usize, &f64)> = magnitudes.iter().enumerate().filter(|&(_, x)| *x > 0.1).collect();
 
-                for j in (0..magnitudes.len()).rev() {
-                    ctx.set_fill_style(&JsValue::from_str(&format!("rgb({}, {}, {})", 0, (magnitudes[magnitudes.len() - j - 1] * 255.0) as u8, 0)));
-                    ctx.fill_rect(width as f64 - block_width - 1.0, j as f64 * block_height, block_width, block_height);
+                // to fix: black canvas
+                // filter outputs.enum with threshold
+                // fill square using enum index with colour from enum value
+                for (j, x) in magnitudes {
+                    ctx.set_fill_style(&JsValue::from_str(&format!("rgb({}, {}, {})", 0, (x * 255.0) as u8, 0)));
+                    ctx.fill_rect(width as f64 - block_width - 1.0, height as f64 - j as f64 * block_height - 1.0, block_width, block_height);
                 } 
-
-                ctx.stroke();
 
                 output_signal.push(signal);
             }
