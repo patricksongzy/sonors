@@ -9,15 +9,6 @@ use complex::complex::Float;
 const WINDOW_SIZE: usize = 256;
 const N_OVERLAP: usize = 128;
 
-fn main() {
-    match run() {
-        Ok(_) => {}
-        e => {
-            eprintln!("Failed to run PortAudio with: {:?}", e)
-        }
-    }
-}
-
 fn circular_read<T>(circular_buffer: &Vec<T>, read_ptr: usize, read_len: usize) -> Vec<T>
 where
     T: Copy,

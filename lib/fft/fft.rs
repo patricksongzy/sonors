@@ -9,6 +9,11 @@ pub fn get_frequencies(signal_length: usize, sample_period: Float) -> Vec<Float>
     (0..(signal_length as i32 - 1) / 2 + 1).chain(-((signal_length / 2) as i32)..0).map(|value| value as Float * scale).collect()
 }
 
+pub fn get_rotated_signal(signal: &mut Vec<Float>) {
+    let signal_length = signal.len();
+    signal.rotate_left((signal_length as Float / 2.0).ceil() as usize);
+}
+
 /// Computes a radix-2 Fast Fourier Transform. The output sequence is a `Vec` of the complex
 /// results. This function writes to a new `Vec` instead of overwriting the original.
 pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
@@ -152,27 +157,32 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     output_signal
 }
 
-pub fn create_rotating_vectors(signal_length: usize) -> Vec<Complex> {
+pub fn create_rotating_vectors(signal_length: usize) -> (Vec<Float>, Vec<Float>) {
     let coefficient: Float = (2.0 * std::f64::consts::PI) as Float;
     let mut m = 2;
 
-    let mut rotating_vectors: Vec<Complex> = vec![Complex::new(0.0, 0.0); log2(signal_length) - 1];
+    let log_length = log2(signal_length);
+    let mut rotating_re = vec![0.0; log_length - 1];
+    let mut rotating_im = vec![0.0; log_length - 1];
 
-    for s in 2..=log2(signal_length) {
+    for s in 2..=log_length {
         m *= 2;
 
         let angle = coefficient / m as Float;
-        rotating_vectors[s - 2] = Complex::new(angle.cos(), -angle.sin());
+        rotating_re[s - 2] = angle.cos();
+        rotating_im[s - 2] = -angle.sin();
     }
 
-    rotating_vectors
+    (rotating_re, rotating_im)
 }
 
 pub fn iterative_rfft_once(signal: &mut Vec<Float>) {
-    iterative_rfft(signal, &create_rotating_vectors(signal.len()));
+    let (rotating_re, rotating_im) = create_rotating_vectors(signal.len());
+    let rotating_vectors = rotating_re.into_iter().zip(rotating_im).map(|(re, im)| Complex::new(re, im)).collect();
+    iterative_rfft(signal, &rotating_vectors);
 }
 
-pub fn get_hann(signal_length: usize) -> Vec<Float> {
+pub fn create_hann(signal_length: usize) -> Vec<Float> {
     let coefficient = (2.0 * std::f64::consts::PI / (signal_length - 1) as f64) as Float;
     (0..signal_length).map(|i| 0.5 - 0.5 * (coefficient * i as Float).cos()).collect::<Vec<Float>>()
 }
