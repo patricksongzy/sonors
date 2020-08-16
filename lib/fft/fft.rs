@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_rfft_baseline() {
-        let sig_sine = create_signal(1.5, 128);
+        let sig_sine = create_signal(0.5, 128);
         let sine_fft = fft(wrap_real(&sig_sine));
 
         for (output, target) in rfft(sig_sine).iter().zip(&sine_fft) {
@@ -328,12 +328,14 @@ mod tests {
 
     #[test]
     fn test_iterative_rfft_baseline() {
-        let sig_sine = create_signal(1.5, 128);
+        let sig_sine = create_signal(0.5, 128);
         let sine_fft = fft(wrap_real(&sig_sine));
 
         let mut signal = sig_sine.clone();
         let signal_length = signal.len();
         iterative_rfft_once(&mut signal);
+
+        println!("{:?}", signal);
 
         for (output, target) in (&signal[..=signal_length / 2]).iter().zip(&sine_fft[..=signal_length / 2]) {
             assert_relative_eq!(output, &target.re);
