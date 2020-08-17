@@ -6,12 +6,30 @@ use complex::complex::*;
 
 pub fn get_frequencies(signal_length: usize, sample_period: Float) -> Vec<Float> {
     let scale = 1.0 as Float / (sample_period * signal_length as Float);
-    (0..(signal_length as i32 - 1) / 2 + 1).chain(-((signal_length / 2) as i32)..0).map(|value| value as Float * scale).collect()
+    (0..=(signal_length as i32 - 1) / 2).chain(-((signal_length / 2) as i32)..0).map(|value| value as Float * scale).collect()
+}
+
+pub fn get_real_frequencies(signal_length: usize, sample_period: Float) -> Vec<Float> {
+    let scale = 1.0 as Float / (sample_period * signal_length as Float);
+    (0..=signal_length / 2).map(|value| value as Float * scale).collect()
 }
 
 pub fn get_rotated_signal(signal: &mut Vec<Float>) {
     let signal_length = signal.len();
     signal.rotate_left((signal_length as Float / 2.0).ceil() as usize);
+}
+
+pub fn dft(input_signal: Vec<Complex>) -> Vec<Complex> {
+    let signal_length = input_signal.len();
+    let mut results = vec![Complex::new(0.0, 0.0); signal_length];
+    for i in 0..signal_length {
+        for j in 0..signal_length {
+            let angle = 2.0 * std::f64::consts::PI * (i * j) as Float / signal_length as Float;
+            results[i] += input_signal[j] * Complex::new(angle.cos(), -angle.sin());
+        }
+    }
+
+    results
 }
 
 /// Computes a radix-2 Fast Fourier Transform. The output sequence is a `Vec` of the complex
@@ -36,10 +54,10 @@ pub fn fft(input_signal: Vec<Complex>) -> Vec<Complex> {
     for k in 0..signal_length / 2 {
         let t = output_signal[k];
         let angle = coefficient * k as Float;
-        let rotating_vector = Complex::new(angle.cos(), -angle.sin());
+        let rotating_vectors = Complex::new(angle.cos(), -angle.sin());
 
         // equivalent to exponentiation
-        let product = rotating_vector * output_signal[k + signal_length / 2];
+        let product = rotating_vectors * output_signal[k + signal_length / 2];
 
         // leverage symmetry to only perform half calculations
         output_signal[k] = t + product;
@@ -142,9 +160,9 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     let coefficient: Float = (2.0 * std::f64::consts::PI / signal_length as f64) as Float;
     for k in 0..signal_length / 2 {
         let angle = coefficient * k as Float;
-        let rotating_vector = Complex::new(angle.cos(), -angle.sin());
+        let rotating_vectors = Complex::new(angle.cos(), -angle.sin());
 
-        let product = rotating_vector * output_signal[k + signal_length / 2];
+        let product = rotating_vectors * output_signal[k + signal_length / 2];
         output_signal[k] += product;
     }
 
@@ -157,29 +175,25 @@ pub fn rfft(input_signal: Vec<Float>) -> Vec<Complex> {
     output_signal
 }
 
-pub fn create_rotating_vectors(signal_length: usize) -> (Vec<Float>, Vec<Float>) {
+pub fn create_rotating_vectors(signal_length: usize) -> Vec<Complex> {
     let coefficient: Float = (2.0 * std::f64::consts::PI) as Float;
     let mut m = 2;
 
     let log_length = log2(signal_length);
-    let mut rotating_re = vec![0.0; log_length - 1];
-    let mut rotating_im = vec![0.0; log_length - 1];
+    let mut rotating_vectors = vec![Complex::new(0.0, 0.0); log_length - 1];
 
     for s in 2..=log_length {
         m *= 2;
 
         let angle = coefficient / m as Float;
-        rotating_re[s - 2] = angle.cos();
-        rotating_im[s - 2] = -angle.sin();
+        rotating_vectors[s - 2] = Complex::new(angle.cos(), -angle.sin());
     }
 
-    (rotating_re, rotating_im)
+    rotating_vectors
 }
 
 pub fn iterative_rfft_once(signal: &mut Vec<Float>) {
-    let (rotating_re, rotating_im) = create_rotating_vectors(signal.len());
-    let rotating_vectors = rotating_re.into_iter().zip(rotating_im).map(|(re, im)| Complex::new(re, im)).collect();
-    iterative_rfft(signal, &rotating_vectors);
+    iterative_rfft(signal, &create_rotating_vectors(signal.len()));
 }
 
 pub fn create_hann(signal_length: usize) -> Vec<Float> {
@@ -317,11 +331,40 @@ mod tests {
     }
 
     #[test]
+    fn test_frequencies() {
+        let frequencies = get_frequencies(8, 0.5 as Float);
+        let expected = vec![0.0, 0.25, 0.5, 0.75, -1.0, -0.75, -0.5, -0.25];
+
+        for (output, target) in frequencies.iter().zip(&expected) {
+            assert_relative_eq!(output, target);
+        }
+    }
+
+    #[test]
+    fn test_real_frequencies() {
+        let frequencies = get_real_frequencies(8, 0.5 as Float);
+        let expected = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+
+        for (output, target) in frequencies.iter().zip(&expected) {
+            assert_relative_eq!(output, target);
+        }
+    }
+
+    #[test]
+    fn test_fft_baseline() {
+        let sig_sine = wrap_real(&create_signal(0.5, 128));
+        
+        for (output, target) in fft(sig_sine.clone()).iter().zip(&dft(sig_sine)) {
+            assert_relative_eq!(output, target);
+        }
+    }
+
+    #[test]
     fn test_rfft_baseline() {
         let sig_sine = create_signal(0.5, 128);
-        let sine_fft = fft(wrap_real(&sig_sine));
+        let sine_dft = dft(wrap_real(&sig_sine));
 
-        for (output, target) in rfft(sig_sine).iter().zip(&sine_fft) {
+        for (output, target) in rfft(sig_sine).iter().zip(&sine_dft) {
             assert_relative_eq!(output, target);
         }
     }
@@ -329,19 +372,17 @@ mod tests {
     #[test]
     fn test_iterative_rfft_baseline() {
         let sig_sine = create_signal(0.5, 128);
-        let sine_fft = fft(wrap_real(&sig_sine));
+        let sine_dft = dft(wrap_real(&sig_sine));
 
         let mut signal = sig_sine.clone();
         let signal_length = signal.len();
         iterative_rfft_once(&mut signal);
 
-        println!("{:?}", signal);
-
-        for (output, target) in (&signal[..=signal_length / 2]).iter().zip(&sine_fft[..=signal_length / 2]) {
+        for (output, target) in (&signal[..=signal_length / 2]).iter().zip(&sine_dft[..=signal_length / 2]) {
             assert_relative_eq!(output, &target.re);
         }
 
-        for (target, output) in (&sine_fft[1..signal_length / 2]).iter().rev().zip(&signal[signal_length / 2 + 1..]) {
+        for (target, output) in (&sine_dft[1..signal_length / 2]).iter().rev().zip(&signal[signal_length / 2 + 1..]) {
             assert_relative_eq!(output, &target.im);
         }
     }
