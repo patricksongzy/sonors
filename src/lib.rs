@@ -9,8 +9,6 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 use js_sys::Float32Array;
 
 use std::cmp;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use fft::fft::*;
 use complex::complex::{Float, Complex};
@@ -72,10 +70,6 @@ fn get_canvas(id: &str) -> web_sys::HtmlCanvasElement {
 
 fn get_context(canvas: &web_sys::HtmlCanvasElement) -> web_sys::CanvasRenderingContext2d {
     canvas.get_context_with_context_options("2d", &JsValue::from_str("{ alpha: false }")).unwrap().unwrap().dyn_into::<web_sys::CanvasRenderingContext2d>().unwrap()
-}
-
-fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-    web_sys::window().unwrap().request_animation_frame(f.as_ref().unchecked_ref()).expect("Failed to request animation frame.");
 }
 
 #[wasm_bindgen]
@@ -191,21 +185,14 @@ impl Spectrogram {
 
             circular_buffer.read_ptr = (read_ptr + signal.len()) % circular_buffer.buffer.len();
 
-            let f = Rc::new(RefCell::new(None));
-            let g = f.clone();
-
             let overlap = self.overlap;
-            *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            let f = Closure::wrap(Box::new(move || {
                 let canvas = get_canvas("canvas");
 
                 for i in 0..signal_length / overlap {
                     ctx.set_global_composite_operation("copy").expect("Failed to change global composite operation.");
                     ctx.draw_image_with_html_canvas_element(&canvas, -block_width, 0.0).expect("Failed to draw canvas image.");
                     ctx.set_global_composite_operation("source-over").expect("Failed to change global composite operation.");
-
-                    // let image_data = ctx.get_image_data(1.0, 0.0, (width - 1) as f64, height as f64).unwrap();
-                    // ctx.put_image_data(&image_data, 0.0, 0.0).expect("Failed to put image data to canvas.");
-                    // ctx.clear_rect((width - 1) as f64, 0.0, 1.0, height as f64);
 
                     let magnitudes: Vec<(usize, &f64)> = output_signal[i].iter().enumerate().filter(|&(_, x)| *x > 0.1).collect();
                     let max = magnitudes.iter().cloned().fold(0.0 / 0.0, |m, (_, x)| f64::max(m, *x));
@@ -215,13 +202,10 @@ impl Spectrogram {
                         ctx.fill_rect(width as f64 - block_width - 0.5, height as f64 - j as f64 * block_height - 0.5, block_width, block_height);
                     } 
                 }
+            }) as Box<dyn FnMut()>);
 
-                request_animation_frame(f.borrow().as_ref().unwrap());
-
-                let _ = f.borrow_mut().take();
-            }) as Box<dyn FnMut()>));
-
-            request_animation_frame(g.borrow().as_ref().unwrap());
+            web_sys::window().unwrap().request_animation_frame(f.as_ref().unchecked_ref()).expect("Failed to request animation frame.");
+            f.forget();
         }
     }
 }

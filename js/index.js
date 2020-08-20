@@ -1,7 +1,9 @@
 // import("../pkg/sonors.js").catch(console.error);
 import("../pkg/sonors").then(module => {
-  let spectrogram = new module.Spectrogram(1024);
-  const handleSuccess = function(stream) {
+  let spectrogram = new module.Spectrogram(1024, navigator.vendor == "Apple Computer, Inc.");
+  const streamMedia = function(stream) {
+    let AudioContext = window.AudioContext || window.webkitAudioContext;
+
     const context = new AudioContext();
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(1024, 1, 1);
@@ -14,30 +16,26 @@ import("../pkg/sonors").then(module => {
     };
   }
 
-  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(handleSuccess);
+  if (navigator.mediaDevices === undefined) {
+    navigator.mediaDevices = {};
+  }
+
+  // based off of MDN
+  if (navigator.mediaDevices.getUserMedia === undefined) {
+    navigator.mediaDevices.getUserMedia = function(constraints) {
+      let getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+      if (!getUserMedia) {
+        return Promise.reject(new Error("getUserMedia is not implemented in this browser."));
+      }
+
+      return new Promise(function(resolve, reject) {
+        getUserMedia.call(navigator, constraints, resolve, reject);
+      });
+    }
+  }
+
+
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(streamMedia);
 });
-// export class Spectrogram {
-//     static __construct(ptr) {
-//         return new Spectrogram(ptr);
-//     }
-
-//     constructor(ptr) {
-//         this.ptr = ptr;
-//     }
-
-//     free() {
-//         const ptr = this.ptr;
-//         this.ptr = 0;
-//         wasm.__wbg_spectrogram_free(ptr);
-//     }
-
-//     static new(arg0) {
-//         const ret = wasm.spectrogram_new(arg0);
-//         return Spectrogram.__construct(ret)
-//     }
-
-//     process_signal(arg0) {
-//         wasm.spectrogram_process_signal(this.ptr, arg0);
-//     }
-// }
 
