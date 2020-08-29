@@ -23,23 +23,6 @@ pub fn main_js() -> Result<(), JsValue> {
     Ok(())
 }
 
-fn circular_read<T>(circular_buffer: &Vec<T>, read_ptr: usize, read_len: usize) -> Vec<T>
-where
-    T: Copy,
-{
-    let buffer_length = circular_buffer.len();
-    let offset: i32 = (read_ptr + read_len) as i32 - buffer_length as i32;
-    let end_ptr = cmp::min(read_ptr + read_len, buffer_length);
-
-    let mut result = circular_buffer[read_ptr..end_ptr].to_vec();
-
-    if offset > 0 {
-        result.extend(circular_buffer[0..offset as usize].to_vec());
-    }
-
-    result
-}
-
 struct CircularBuffer<T>
 where
     T: Clone,
@@ -53,6 +36,20 @@ impl<T> CircularBuffer<T>
 where
     T: Clone,
 {
+    fn read(&mut self, read_offset: usize, read_len: usize) -> Vec<T> {
+        let buffer_length = self.buffer.len();
+        let offset: i32 = (self.read_ptr + read_offset + read_len) as i32 - buffer_length as i32;
+        let end_ptr = cmp::min(self.read_ptr + read_offset + read_len, buffer_length);
+
+        let mut result = self.buffer[self.read_ptr + read_offset..end_ptr].to_vec();
+
+        if offset > 0 {
+            result.extend(self.buffer[0..offset as usize].to_vec());
+        }
+
+        result
+    }
+
     fn append(&mut self, signal: &Vec<T>) {
         self.buffer.splice(self.write_ptr..self.write_ptr + signal.len(), signal.iter().cloned());
         self.write_ptr = (self.write_ptr + signal.len()) % self.buffer.len();
@@ -78,6 +75,7 @@ pub struct Spectrogram {
     overlap: usize,
     rotating_vectors: Vec<Complex>,
     hann_window: Vec<Float>,
+    block_height: f64,
 }
 
 #[wasm_bindgen]
@@ -102,7 +100,7 @@ impl Spectrogram {
         let grid_canvas = get_canvas("grids");
         let grid_ctx = get_context(&grid_canvas);
 
-        canvas.set_width(4 * canvas.width());
+        canvas.set_width(8 * canvas.width());
         canvas.set_height(2 * canvas.height());
 
         grid_canvas.set_width(2 * grid_canvas.width());
@@ -130,11 +128,14 @@ impl Spectrogram {
         // canvas.set_width(web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap() as u32);
         // canvas.set_height(web_sys::window().unwrap().inner_height().unwrap().as_f64().unwrap() as u32);
 
+        let block_height = 2.0 * canvas.height() as f64 / buffer_length as f64;
+
         Self {
             circular_buffer,
             overlap,
             rotating_vectors,
             hann_window,
+            block_height,
         }
     }
 
@@ -150,18 +151,17 @@ impl Spectrogram {
         let canvas = get_canvas("canvas");
         let ctx = get_context(&canvas);
 
-        let (width, height) = (canvas.width(), canvas.height());
+        let (height, width) = (canvas.height(), canvas.width());
+
+        let block_height = self.block_height;
 
         // only proceed if write pointer is two windows from the read pointer
         if (write_ptr as i32 - read_ptr as i32).abs() >= (2 * signal_length) as i32 {
             let mut output_signal: Vec<Vec<Float>> = Vec::with_capacity(signal_length / self.overlap);
-
-            let block_height = 2.0 * height as f64 / signal_length as f64;
-            let block_width = 1.0;
             
             for i in 0..signal_length / self.overlap {
                 // read pointer should not exceed buffer length due to constraints from the for loop
-                let mut signal: Vec<Float> = circular_read(&circular_buffer.buffer, read_ptr + i * self.overlap, signal_length).iter().map(|x| *x as Float).collect();
+                let mut signal: Vec<Float> = circular_buffer.read(i * self.overlap, signal_length).iter().map(|x| *x as Float).collect();
                 
                 // apply the window to the output
                 for (x, w) in signal.iter_mut().zip(&self.hann_window) {
@@ -189,19 +189,30 @@ impl Spectrogram {
             let f = Closure::wrap(Box::new(move || {
                 let canvas = get_canvas("canvas");
 
-                for i in 0..signal_length / overlap {
-                    ctx.set_global_composite_operation("copy").expect("Failed to change global composite operation.");
-                    ctx.draw_image_with_html_canvas_element(&canvas, -block_width, 0.0).expect("Failed to draw canvas image.");
-                    ctx.set_global_composite_operation("source-over").expect("Failed to change global composite operation.");
-
-                    let magnitudes: Vec<(usize, &f64)> = output_signal[i].iter().enumerate().filter(|&(_, x)| *x > 0.1).collect();
+                let num_windows = signal_length / overlap;
+                let mut pixel_data = vec![0; num_windows * height as usize * 4];
+                for i in 0..num_windows {
+                    let magnitudes: Vec<(usize, &f64)> = output_signal[i].iter().enumerate().filter(|&(_, x)| *x > 0.3).collect();
                     let max = magnitudes.iter().cloned().fold(0.0 / 0.0, |m, (_, x)| f64::max(m, *x));
                     for (j, x) in magnitudes {
+                        let y = (height as f64 - j as f64 * block_height - 0.5).floor() as usize;
+                        let intensity = (2.0 + (x / max) * 230.0) as u8;
                         // add a slight offset to the colours
-                        ctx.set_fill_style(&JsValue::from_str(&format!("rgb({}, {}, {})", 0, (25.0 + (x / max) * 230.0) as u8, 0)));
-                        ctx.fill_rect(width as f64 - block_width - 0.5, height as f64 - j as f64 * block_height - 0.5, block_width, block_height);
+                        // ctx.set_fill_style(&JsValue::from_str(&format!("rgb({}, {}, {})", 0, intensity, 0)));
+                        // ctx.fill_rect(width as f64 - 1.5, y, 1.0, block_height);
+                        let position = (num_windows as usize * y + i) * 4;
+                        pixel_data[position + 1] = intensity;
+                        pixel_data[position + 3] = 255;
                     } 
                 }
+
+                ctx.set_global_composite_operation("copy").expect("Failed to change global composite operation.");
+                ctx.draw_image_with_html_canvas_element(&canvas, -(num_windows as f64), 0.0).expect("Failed to draw canvas image.");
+                ctx.set_global_composite_operation("source-over").expect("Failed to change global composite operation.");
+
+
+                let image_data = web_sys::ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&mut pixel_data), num_windows as u32).unwrap();
+                ctx.put_image_data(&image_data, width as f64 - num_windows as f64 - 0.5, 0.0).expect("Failed to write image data.");
             }) as Box<dyn FnMut()>);
 
             web_sys::window().unwrap().request_animation_frame(f.as_ref().unchecked_ref()).expect("Failed to request animation frame.");
