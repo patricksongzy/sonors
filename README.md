@@ -1,3 +1,6 @@
+# Sonors
+A spectrogram application built with Rust, and WASM, rendered to an HTML Canvas.
+
 ## How to install
 
 ```sh
