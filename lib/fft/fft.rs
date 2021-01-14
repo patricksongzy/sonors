@@ -1,6 +1,24 @@
 // Algorithms based off 'Real-Valued Fast Fourier Transform Algorithms' by Sorensen et al.
 // Tests based off [](https://www.dsprelated.com/showthread/comp.dsp/71595-1.php),
 // and 'Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck' by Ergun.
+//
+// @article{Sorensen1987RealvaluedFF,
+//   title={Real-valued fast Fourier transform algorithms},
+//   author={H. Sorensen and D. Jones and M. Heideman and C. Burrus},
+//   journal={IEEE Trans. Acoust. Speech Signal Process.},
+//   year={1987},
+//   volume={35},
+//   pages={849-863}
+// }
+//
+// @INPROCEEDINGS{Ergün94testingmultivariate,
+//   author = {Funda Ergün},
+//   title = {Testing Multivariate Linear Functions: Overcoming the Generator Bottleneck},
+//   booktitle = {Proc. 27th STOC},
+//   year = {1994},
+//   pages = {407--416}
+// }
+//
 
 use complex::complex::*;
 
